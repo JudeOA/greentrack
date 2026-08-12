@@ -1,0 +1,4 @@
+target
+uploads
+*.txt
+firebase-service-account.json
