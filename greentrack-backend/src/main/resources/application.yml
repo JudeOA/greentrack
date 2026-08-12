@@ -12,6 +12,7 @@ spring:
       minimum-idle: 2
   jpa:
     open-in-view: false
+    defer-datasource-initialization: true
     hibernate:
       ddl-auto: update
     show-sql: false
@@ -19,6 +20,9 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         default_batch_fetch_size: 25
+  sql:
+    init:
+      mode: always
   servlet:
     multipart:
       enabled: true
