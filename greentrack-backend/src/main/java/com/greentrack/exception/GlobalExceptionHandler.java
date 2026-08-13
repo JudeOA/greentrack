@@ -2,9 +2,8 @@ package com.greentrack.exception;
 
 import com.greentrack.dto.response.ApiResponse;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.core.io.ClassPathResource;
-import org.springframework.core.io.Resource;
 import org.springframework.http.*;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.DisabledException;
@@ -57,20 +56,22 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(ApiResponse.error("File exceeds 10MB limit"));
     }
 
-    // NEW: When a request doesn't match a real static file, serve the single-page
-    // app (index.html) instead of turning a harmless 404 into a 500. Real API
-    // paths still return clean JSON 404s.
+    // When a request doesn't match a real static file or mapping:
+    //  - real API paths return a clean JSON 404
+    //  - everything else is forwarded to the single-page app (index.html),
+    //    letting Spring's own static handler serve it from the jar.
     @ExceptionHandler(NoResourceFoundException.class)
-    public ResponseEntity<?> handleNoResource(NoResourceFoundException ex, HttpServletRequest req) {
-        String path = req.getRequestURI();
+    public void handleNoResource(NoResourceFoundException ex,
+                                 HttpServletRequest request,
+                                 HttpServletResponse response) throws Exception {
+        String path = request.getRequestURI();
         if (path != null && path.startsWith("/api/")) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.error("Not found"));
+            response.setStatus(HttpStatus.NOT_FOUND.value());
+            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+            response.getWriter().write("{\"success\":false,\"message\":\"Not found\",\"data\":null}");
+            return;
         }
-        Resource index = new ClassPathResource("static/index.html");
-        if (index.exists()) {
-            return ResponseEntity.ok().contentType(MediaType.TEXT_HTML).body(index);
-        }
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.error("Not found"));
+        request.getRequestDispatcher("/index.html").forward(request, response);
     }
 
     @ExceptionHandler(Exception.class)
