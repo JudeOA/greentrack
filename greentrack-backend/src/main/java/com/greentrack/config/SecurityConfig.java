@@ -4,6 +4,7 @@ import com.greentrack.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.*;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.*;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
@@ -37,8 +38,18 @@ public class SecurityConfig {
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .exceptionHandling(e -> e.authenticationEntryPoint(authenticationEntryPoint))
             .authorizeHttpRequests(a -> a
-                .requestMatchers("/api/auth/**", "/api/categories", "/uploads/**", "/", "/index.html").permitAll()
-                .anyRequest().authenticated())
+                // Public API endpoints
+                .requestMatchers("/api/auth/**", "/api/categories", "/uploads/**").permitAll()
+                // The single-page app: HTML, JS, CSS, icons, and any non-API GET are public
+                .requestMatchers(HttpMethod.GET,
+                    "/", "/index.html", "/static/**", "/assets/**",
+                    "/*.js", "/*.css", "/*.png", "/*.jpg", "/*.svg",
+                    "/*.ico", "/*.json", "/*.webmanifest",
+                    "/favicon.ico", "/error").permitAll()
+                // Everything under /api still needs a valid JWT
+                .requestMatchers("/api/**").authenticated()
+                // Any other route (SPA client paths) is allowed so the app can load
+                .anyRequest().permitAll())
             .authenticationProvider(authenticationProvider())
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
