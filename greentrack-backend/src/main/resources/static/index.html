@@ -1408,12 +1408,32 @@ function addPhotos(fileList) {
   if (wasEmpty && capturedPhotos.length) classifyPhoto(capturedPhotos[0]);
 }
 
+function downscaleImage(file, maxDim) {
+  return new Promise(function(resolve) {
+    try {
+      var img = new Image();
+      var url = URL.createObjectURL(file);
+      img.onload = function() {
+        var w = img.width, h = img.height;
+        if (w > maxDim || h > maxDim) { var sc = Math.min(maxDim / w, maxDim / h); w = Math.round(w * sc); h = Math.round(h * sc); }
+        var c = document.createElement('canvas'); c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(url);
+        c.toBlob(function(b) { resolve(b || file); }, 'image/jpeg', 0.85);
+      };
+      img.onerror = function() { URL.revokeObjectURL(url); resolve(file); };
+      img.src = url;
+    } catch (e) { resolve(file); }
+  });
+}
+
 async function classifyPhoto(file) {
   const hint = document.getElementById('ai-suggestion');
   if (hint) { hint.style.display = ''; hint.textContent = '🔍 Detecting waste type…'; }
   try {
+    const small = await downscaleImage(file, 1024);
     const form = new FormData();
-    form.append('image', file);
+    form.append('image', small, 'photo.jpg');
     const res = await apiFetch('/api/reports/classify', { method: 'POST', body: form });
     const d = (res && res.data) || {};
     if (d.categoryName) {
@@ -1918,9 +1938,32 @@ function logout() {
   showScreen('register');
 }
 
+function decodeJwtRole() {
+  try {
+    const t = getToken(); if (!t) return '';
+    const payload = JSON.parse(atob(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    let r = payload.role || payload.roles || payload.authorities || payload.auth || payload.scope || '';
+    if (Array.isArray(r)) r = r.join(' ');
+    if (r && typeof r === 'object') r = r.authority || r.name || '';
+    return String(r || '').toUpperCase();
+  } catch (e) { return ''; }
+}
+function getRole() {
+  const u = getUser() || {};
+  let r = u.role || (u.user && u.user.role) ||
+          (Array.isArray(u.roles) && u.roles[0]) ||
+          (Array.isArray(u.authorities) && u.authorities[0]);
+  if (r && typeof r === 'object') r = r.authority || r.name || '';
+  r = String(r || '').toUpperCase().replace('ROLE_', '');
+  if (r === 'ADMIN' || r === 'COLLECTOR' || r === 'CITIZEN') return r;
+  const jr = decodeJwtRole();
+  if (jr.indexOf('ADMIN') !== -1) return 'ADMIN';
+  if (jr.indexOf('COLLECTOR') !== -1) return 'COLLECTOR';
+  if (jr.indexOf('CITIZEN') !== -1) return 'CITIZEN';
+  return r;
+}
 function routeByRole() {
-  const user = getUser();
-  const role = user ? user.role : null;
+  const role = getRole();
   if (role === 'COLLECTOR') {
     const ls = document.getElementById('login-screen');
     const dash = document.getElementById('collector-dashboard');
