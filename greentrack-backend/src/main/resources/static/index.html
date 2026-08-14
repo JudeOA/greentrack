@@ -438,6 +438,7 @@ body{min-height:max(884px,100dvh);}
 <select id="report-category" class="w-full h-14 pl-4 pr-4 bg-white border border-outline-variant rounded-xl focus:ring-2 focus:ring-secondary focus:border-secondary outline-none transition-all cursor-pointer" style="font-family:Inter,sans-serif;font-size:15px;color:#191c1e;">
 <option value="">Loading categories…</option>
 </select>
+<div id="ai-suggestion" style="display:none;margin-top:8px;padding:8px 12px;background:#e7f6ec;border-radius:10px;font-size:13px;color:#006e2f;font-weight:600;"></div>
 </div>
 </div>
 <!-- Description Textarea -->
@@ -1400,7 +1401,28 @@ function renderPhotoPreview() {
   ).join('');
 }
 function removePhoto(i) { capturedPhotos.splice(i, 1); renderPhotoPreview(); }
-function addPhotos(fileList) { Array.from(fileList).forEach(f => capturedPhotos.push(f)); renderPhotoPreview(); }
+function addPhotos(fileList) {
+  const wasEmpty = capturedPhotos.length === 0;
+  Array.from(fileList).forEach(f => capturedPhotos.push(f));
+  renderPhotoPreview();
+  if (wasEmpty && capturedPhotos.length) classifyPhoto(capturedPhotos[0]);
+}
+
+async function classifyPhoto(file) {
+  const hint = document.getElementById('ai-suggestion');
+  if (hint) { hint.style.display = ''; hint.textContent = '🔍 Detecting waste type…'; }
+  try {
+    const form = new FormData();
+    form.append('image', file);
+    const res = await apiFetch('/api/reports/classify', { method: 'POST', body: form });
+    const d = (res && res.data) || {};
+    if (d.categoryName) {
+      const sel = document.getElementById('report-category');
+      if (sel) { for (const o of sel.options) { if (o.text.indexOf(d.categoryName) !== -1) { sel.value = o.value; break; } } }
+      if (hint) hint.innerHTML = '\u2728 Suggested: <b>' + d.categoryName + '</b>' + (d.confidence ? ' (' + d.confidence + '% sure)' : '') + ' \u2014 you can change it';
+    } else if (hint) { hint.style.display = 'none'; }
+  } catch (e) { if (hint) hint.style.display = 'none'; }
+}
 
 function detectLocation() {
   const statusEl = document.getElementById('report-location-status');

@@ -40,6 +40,9 @@ app:
     credentials-path: ${FIREBASE_CREDENTIALS:./firebase-service-account.json}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:8080}
+  gemini:
+    api-key: ${GEMINI_API_KEY:}
+    model: gemini-2.5-flash
 
 logging:
   level:

@@ -2,6 +2,7 @@ package com.greentrack.controller;
 import com.greentrack.dto.request.*;
 import com.greentrack.dto.response.*;
 import com.greentrack.entity.*;
+import com.greentrack.service.AiClassificationService;
 import com.greentrack.service.ReportService;
 import com.greentrack.web.PageRequestUtil;
 import jakarta.validation.Valid;
@@ -17,6 +18,7 @@ import java.util.List;
 @RestController @RequestMapping("/api/reports") @RequiredArgsConstructor
 public class ReportController {
     private final ReportService reportService;
+    private final AiClassificationService aiClassificationService;
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasRole('CITIZEN')")
@@ -26,6 +28,15 @@ public class ReportController {
             @AuthenticationPrincipal User citizen) {
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok("Report submitted", reportService.create(req, images, citizen)));
     }
+
+    // AI: classify a photo into one of the existing categories (suggestion only)
+    @PostMapping(value="/classify", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('CITIZEN')")
+    public ResponseEntity<ApiResponse<ClassificationResponse>> classify(
+            @RequestPart("image") MultipartFile image) {
+        return ResponseEntity.ok(ApiResponse.ok(aiClassificationService.classify(image)));
+    }
+
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<Page<ReportResponse>>> getAll(
