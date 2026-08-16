@@ -24,9 +24,8 @@ import java.util.stream.Collectors;
 
 /**
  * Sends the uploaded waste photo to Google Gemini (vision) and asks it to
- * classify the image into one of the app's existing categories. This never
- * throws to the caller: if anything fails (no API key, network error, bad
- * response) it returns an empty suggestion so the report flow is unaffected.
+ * classify the image into one of the app's existing categories. Never throws:
+ * on any failure it returns an empty suggestion so the report flow is safe.
  */
 @Service
 @RequiredArgsConstructor
@@ -51,6 +50,8 @@ public class AiClassificationService {
     public ClassificationResponse classify(MultipartFile image) {
         try {
             if (apiKey == null || apiKey.isBlank() || image == null || image.isEmpty()) {
+                log.warn("AI classify skipped: apiKeyPresent={}, imageEmpty={}",
+                        (apiKey != null && !apiKey.isBlank()), (image == null || image.isEmpty()));
                 return EMPTY;
             }
 
@@ -59,26 +60,31 @@ public class AiClassificationService {
                     .collect(Collectors.toList());
             if (names.isEmpty()) return EMPTY;
 
-            String base64 = Base64.getEncoder().encodeToString(image.getBytes());
+            byte[] bytes = image.getBytes();
+            log.info("AI classify: received image bytes={}, contentType={}", bytes.length, image.getContentType());
+            String base64 = Base64.getEncoder().encodeToString(bytes);
             String mime = image.getContentType();
             if (mime == null || !mime.startsWith("image/")) mime = "image/jpeg";
 
-            String prompt = "You are a waste-management image classifier for a city cleanup app. "
-                    + "Look at the photo and classify the waste issue into EXACTLY ONE of these categories: "
+            String prompt = "Carefully LOOK at the attached photo of a real-world scene. "
+                    + "First describe in a few words what you actually see in the image. "
+                    + "Then classify the waste/sanitation issue into EXACTLY ONE of these categories: "
                     + String.join(", ", names) + ". "
-                    + "Respond with ONLY a JSON object of the form "
-                    + "{\"category\":\"<one of the exact category names above>\",\"confidence\":<integer 0-100>}. "
-                    + "Pick the closest category even if unsure, using a lower confidence.";
+                    + "Base your answer ONLY on what is visibly in the photo, not on guessing. "
+                    + "Respond with ONLY a JSON object: "
+                    + "{\"seen\":\"<short description of what is in the photo>\","
+                    + "\"category\":\"<one of the exact category names above>\","
+                    + "\"confidence\":<integer 0-100>}.";
 
-            // Build request body safely with Jackson
             ObjectNode root = mapper.createObjectNode();
             ArrayNode contents = root.putArray("contents");
             ObjectNode content = contents.addObject();
             ArrayNode parts = content.putArray("parts");
-            parts.addObject().put("text", prompt);
+            // Image FIRST, then the instruction (recommended ordering for vision)
             ObjectNode inline = parts.addObject().putObject("inline_data");
             inline.put("mime_type", mime);
             inline.put("data", base64);
+            parts.addObject().put("text", prompt);
             ObjectNode gen = root.putObject("generationConfig");
             gen.put("temperature", 0);
             gen.put("responseMimeType", "application/json");
@@ -103,19 +109,27 @@ public class AiClassificationService {
             JsonNode body = mapper.readTree(resp.body());
             JsonNode textNode = body.path("candidates").path(0)
                     .path("content").path("parts").path(0).path("text");
-            if (textNode.isMissingNode()) return EMPTY;
+            if (textNode.isMissingNode()) {
+                log.warn("Gemini classify: no text in response: {}", resp.body());
+                return EMPTY;
+            }
 
-            JsonNode parsed = mapper.readTree(textNode.asText());
+            String rawText = textNode.asText();
+            log.info("Gemini classify raw output: {}", rawText);
+
+            JsonNode parsed = mapper.readTree(rawText);
             String category = parsed.path("category").asText(null);
             int confidence = parsed.path("confidence").asInt(0);
             if (confidence < 0) confidence = 0;
             if (confidence > 100) confidence = 100;
 
-            // Only accept a category that actually exists (case-insensitive match)
             String matched = names.stream()
                     .filter(n -> n.equalsIgnoreCase(category == null ? "" : category.trim()))
                     .findFirst().orElse(null);
-            if (matched == null) return EMPTY;
+            if (matched == null) {
+                log.warn("Gemini returned unknown category '{}'", category);
+                return EMPTY;
+            }
 
             return ClassificationResponse.builder()
                     .categoryName(matched)
@@ -123,7 +137,7 @@ public class AiClassificationService {
                     .build();
 
         } catch (Exception e) {
-            log.warn("AI classification failed: {}", e.getMessage());
+            log.warn("AI classification failed: {}", e.getMessage(), e);
             return EMPTY;
         }
     }
