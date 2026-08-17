@@ -1796,18 +1796,47 @@ async function loadAdminWorkers() {
     el.innerHTML = '<p style="font-family:Inter,sans-serif;font-size:13px;color:#DC2626;">Failed to load collectors.</p>';
   }
 }
+function closeGtModal() {
+  const m = document.getElementById('gt-modal');
+  if (m) m.remove();
+}
+function openGtModal(title, innerHtml) {
+  closeGtModal();
+  const overlay = document.createElement('div');
+  overlay.id = 'gt-modal';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:1000;background:rgba(15,23,42,0.45);display:flex;align-items:flex-end;justify-content:center;';
+  overlay.addEventListener('click', function(e){ if (e.target === overlay) closeGtModal(); });
+  const sheet = document.createElement('div');
+  sheet.style.cssText = 'background:#fff;width:100%;max-width:480px;border-radius:20px 20px 0 0;padding:20px 18px 24px;max-height:75vh;overflow-y:auto;font-family:Inter,sans-serif;box-shadow:0 -8px 30px rgba(0,0,0,0.18);';
+  sheet.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">' +
+    '<div style="font-size:16px;font-weight:800;color:#191c1e;">' + title + '</div>' +
+    '<button onclick="closeGtModal()" style="border:none;background:#f1f5f1;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:16px;color:#3d4a3d;">\u2715</button>' +
+    '</div>' + innerHtml;
+  overlay.appendChild(sheet);
+  document.body.appendChild(overlay);
+}
+
 async function assignReportPrompt(reportId) {
   if (!cachedCollectors.length) { await loadAdminWorkers(); }
-  if (!cachedCollectors.length) { showToast('No collectors available — add one first', 'error'); return; }
-  const list = cachedCollectors.map((c, i) => (i + 1) + '. ' + c.name).join('\n');
-  const choice = prompt('Assign to which collector?\n' + list + '\n\nEnter a number:');
-  if (!choice) return;
-  const idx = parseInt(choice, 10) - 1;
-  const collector = cachedCollectors[idx];
-  if (!collector) { showToast('Invalid choice', 'error'); return; }
+  if (!cachedCollectors.length) { showToast('No collectors available — use "+ Add Staff" first', 'error'); return; }
+  const rows = cachedCollectors.map(function(c){
+    return '<button onclick="confirmAssign(' + reportId + ',' + c.id + ')" ' +
+      'style="width:100%;text-align:left;display:flex;align-items:center;gap:12px;padding:12px 14px;margin-bottom:8px;border:1px solid #e8ede8;border-radius:12px;background:#fff;cursor:pointer;">' +
+      '<span style="width:38px;height:38px;border-radius:50%;background:#e8f5e9;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' +
+      '<span class="material-symbols-outlined" style="color:#006e2f;font-size:20px;">person</span></span>' +
+      '<span style="flex:1;"><span style="display:block;font-size:14px;font-weight:700;color:#191c1e;">' + escapeHtml(c.name) + '</span>' +
+      '<span style="display:block;font-size:12px;color:#6d7b6c;">' + escapeHtml(c.badgeId || c.email) + '</span></span>' +
+      '<span class="material-symbols-outlined" style="color:#94a3b8;">chevron_right</span></button>';
+  }).join('');
+  openGtModal('Assign to a collector', '<div>' + rows + '</div>');
+}
+
+async function confirmAssign(reportId, collectorId) {
+  const collector = cachedCollectors.find(function(c){ return c.id === collectorId; });
+  closeGtModal();
   try {
-    await apiJson('/api/assignments', 'POST', { reportId: reportId, collectorId: collector.id });
-    showToast('Assigned to ' + collector.name, 'success');
+    await apiJson('/api/assignments', 'POST', { reportId: reportId, collectorId: collectorId });
+    showToast('Assigned to ' + (collector ? collector.name : 'collector'), 'success');
     loadAdminDashboard();
   } catch (e) {
     showToast(e.message || 'Failed to assign', 'error');
