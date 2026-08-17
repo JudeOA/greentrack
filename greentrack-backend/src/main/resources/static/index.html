@@ -1941,7 +1941,9 @@ function logout() {
 function decodeJwtRole() {
   try {
     const t = getToken(); if (!t) return '';
-    const payload = JSON.parse(atob(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    let b64 = t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4) b64 += '=';
+    const payload = JSON.parse(atob(b64));
     let r = payload.role || payload.roles || payload.authorities || payload.auth || payload.scope || '';
     if (Array.isArray(r)) r = r.join(' ');
     if (r && typeof r === 'object') r = r.authority || r.name || '';
@@ -1964,6 +1966,7 @@ function getRole() {
 }
 function routeByRole() {
   const role = getRole();
+  try { console.log('GreenTrack detected role:', role); } catch(e){}
   if (role === 'COLLECTOR') {
     const ls = document.getElementById('login-screen');
     const dash = document.getElementById('collector-dashboard');
