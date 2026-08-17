@@ -4,11 +4,13 @@ import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 import javax.crypto.SecretKey;
 import java.util.*;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Component @Slf4j
 public class JwtUtil {
@@ -19,9 +21,23 @@ public class JwtUtil {
     private static final String TYPE_CLAIM = "typ";
     private static final String ACCESS_TYPE = "access";
     private static final String REFRESH_TYPE = "refresh";
+    private static final String ROLE_CLAIM = "role";
 
-    public String generateToken(UserDetails u)        { return buildToken(Map.of(TYPE_CLAIM, ACCESS_TYPE), u.getUsername(), jwtExpirationMs); }
-    public String generateRefreshToken(UserDetails u) { return buildToken(Map.of(TYPE_CLAIM, REFRESH_TYPE), u.getUsername(), refreshExpirationMs); }
+    public String generateToken(UserDetails u) {
+        // Include the user's role (e.g. "ADMIN"/"COLLECTOR"/"CITIZEN") in the token
+        String role = u.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .map(a -> a.startsWith("ROLE_") ? a.substring(5) : a)
+                .findFirst().orElse("");
+        Map<String,Object> claims = new HashMap<>();
+        claims.put(TYPE_CLAIM, ACCESS_TYPE);
+        claims.put(ROLE_CLAIM, role);
+        return buildToken(claims, u.getUsername(), jwtExpirationMs);
+    }
+
+    public String generateRefreshToken(UserDetails u) {
+        return buildToken(Map.of(TYPE_CLAIM, REFRESH_TYPE), u.getUsername(), refreshExpirationMs);
+    }
 
     private String buildToken(Map<String,Object> claims, String subject, long exp) {
         return Jwts.builder().claims(claims).subject(subject)
